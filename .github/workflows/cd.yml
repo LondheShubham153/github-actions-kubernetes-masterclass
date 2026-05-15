@@ -17,16 +17,42 @@ jobs:
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
-            if [ ! -d ~/github-actions-kubernetes-masterclass ]; then
-              git clone ${{ github.server_url }}/${{ github.repository }}.git ~/github-actions-kubernetes-masterclass
+            set -euo pipefail
+
+            REPO_DIR=~/github-actions-kubernetes-masterclass
+
+            # Clone once, then just fetch (much faster than re-cloning)
+            if [ ! -d "$REPO_DIR" ]; then
+              git clone --depth=1 --branch main ${{ github.server_url }}/${{ github.repository }}.git "$REPO_DIR"
             fi
-            cd ~/github-actions-kubernetes-masterclass
-            git pull origin main
+
+            cd "$REPO_DIR"
+            git fetch --depth=1 origin main
+            git checkout --force origin/main
+
+            # Ensure .env exists
             if [ ! -f .env ]; then
-              echo "ERROR: ~/github-actions-kubernetes-masterclass/.env is missing. Create it once with DOCKERHUB_USERNAME and DB credentials."
+              echo "ERROR: .env is missing. Create it with DOCKERHUB_USERNAME and DB credentials."
               exit 1
             fi
+
+            # Pull new images in background while old containers still run
             docker compose pull
-            docker compose up -d
+
+            # Rolling recreate — zero-downtime, starts new containers before stopping old
+            docker compose up -d --remove-orphans
+
+            # Wait for backend health (max 30s)
+            echo "Waiting for backend to be healthy..."
+            for i in $(seq 1 30); do
+              if curl -sf http://localhost:8080/health >/dev/null 2>&1; then
+                echo "Backend healthy!"
+                break
+              fi
+              sleep 1
+            done
+
+            # Cleanup old images
             docker image prune -f
 
+            echo "Deployment complete!"

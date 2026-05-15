@@ -49,3 +49,14 @@ restart: ## Rebuild + reload images, roll backend + frontend
 	kubectl rollout restart deployment/backend deployment/frontend -n $(NAMESPACE)
 	kubectl rollout status  deployment/backend  -n $(NAMESPACE) --timeout=120s
 	kubectl rollout status  deployment/frontend -n $(NAMESPACE) --timeout=60s
+
+fast-restart: ## Reload images + rolling restart (no rebuild — for manifest-only changes)
+	$(MAKE) load
+	kubectl rollout restart deployment/backend deployment/frontend -n $(NAMESPACE)
+	kubectl rollout status  deployment/backend  -n $(NAMESPACE) --timeout=120s
+	kubectl rollout status  deployment/frontend -n $(NAMESPACE) --timeout=60s
+
+hot-reload: ## Restart deployments without rebuild (code already in images)
+	kubectl rollout restart deployment/backend deployment/frontend -n $(NAMESPACE)
+	kubectl rollout status  deployment/backend  -n $(NAMESPACE) --timeout=120s
+	kubectl rollout status  deployment/frontend -n $(NAMESPACE) --timeout=60s
