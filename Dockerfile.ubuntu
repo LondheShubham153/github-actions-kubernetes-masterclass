@@ -1,0 +1,32 @@
+FROM ubuntu:22.04
+
+# Install Docker, Docker Compose, and basic tools
+RUN apt-get update && apt-get install -y \
+    docker.io \
+    docker-compose \
+    git \
+    curl \
+    openssh-server \
+    openssh-client \
+    sudo \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create a non-root user
+RUN useradd -m -s /bin/bash ubuntu && \
+    usermod -aG docker ubuntu
+
+# Setup SSH
+RUN mkdir -p /run/sshd && \
+    ssh-keygen -A
+
+# Allow password login (for testing) or configure SSH keys
+RUN echo "ubuntu:ubuntu123" | chpasswd
+
+# Expose Docker daemon socket volume
+VOLUME /var/lib/docker
+
+# Expose SSH port
+EXPOSE 22
+
+# Start SSH daemon
+CMD ["/usr/sbin/sshd", "-D"]

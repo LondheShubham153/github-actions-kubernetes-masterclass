@@ -1,0 +1,48 @@
+name: CD-Prod
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+
+jobs:
+  deploy-prod:
+    if: ${{ github.event.workflow_run.conclusion == 'success' && vars.DEPLOY_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Deploy to Prod (EC2)
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.PROD_HOST }}
+          username: ${{ secrets.PROD_USER }}
+          key: ${{ secrets.PROD_SSH_KEY }}
+          script: |
+            echo "🚀 Deploying to PROD environment..."
+            
+            if [ ! -d ~/github-actions-kubernetes-masterclass ]; then
+              git clone ${{ github.server_url }}/${{ github.repository }}.git ~/github-actions-kubernetes-masterclass
+            fi
+            
+            cd ~/github-actions-kubernetes-masterclass
+            git pull origin main
+            
+            # Check for environment file
+            if [ ! -f .env.prod ]; then
+              echo "❌ ERROR: .env.prod is missing. Create it from .env.prod.example"
+              exit 1
+            fi
+            
+            # Load environment
+            export $(cat .env.prod | grep -v '#' | xargs)
+            
+            # Deploy with prod compose file
+            docker compose -f docker-compose.prod.yml pull
+            docker compose -f docker-compose.prod.yml up -d
+            docker image prune -f
+            
+            echo "✅ Prod deployment complete"
+            echo "📊 Status:"
+            docker compose -f docker-compose.prod.yml ps

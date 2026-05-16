@@ -1,0 +1,48 @@
+name: CD-Stage
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+
+jobs:
+  deploy-stage:
+    if: ${{ github.event.workflow_run.conclusion == 'success' && vars.DEPLOY_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Deploy to Stage (Docker Ubuntu)
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.STAGE_HOST }}
+          username: ${{ secrets.STAGE_USER }}
+          key: ${{ secrets.STAGE_SSH_KEY }}
+          script: |
+            echo "🚀 Deploying to STAGE environment..."
+            
+            if [ ! -d ~/github-actions-kubernetes-masterclass ]; then
+              git clone ${{ github.server_url }}/${{ github.repository }}.git ~/github-actions-kubernetes-masterclass
+            fi
+            
+            cd ~/github-actions-kubernetes-masterclass
+            git pull origin main
+            
+            # Check for environment file
+            if [ ! -f .env.stage ]; then
+              echo "❌ ERROR: .env.stage is missing. Create it from .env.stage.example"
+              exit 1
+            fi
+            
+            # Load environment
+            export $(cat .env.stage | grep -v '#' | xargs)
+            
+            # Deploy with stage compose file
+            docker compose -f docker-compose.stage.yml pull
+            docker compose -f docker-compose.stage.yml up -d
+            docker image prune -f
+            
+            echo "✅ Stage deployment complete"
+            echo "📊 Status:"
+            docker compose -f docker-compose.stage.yml ps
