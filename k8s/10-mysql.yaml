@@ -81,6 +81,9 @@ metadata:
 spec:
   serviceName: mysql
   replicas: 1
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Delete
+    whenScaled: Delete
   selector:
     matchLabels:
       app: mysql

@@ -1,7 +1,7 @@
 CLUSTER  ?= skillpulse
 NAMESPACE ?= skillpulse
-BACKEND_IMAGE  ?= trainwithshubham/skillpulse-backend:latest
-FRONTEND_IMAGE ?= trainwithshubham/skillpulse-frontend:latest
+BACKEND_IMAGE  ?= uttamtripathi/skillpulse-backend:latest
+FRONTEND_IMAGE ?= uttamtripathi/skillpulse-frontend:latest
 
 .PHONY: up down build load apply status logs mysql restart
 
@@ -17,6 +17,9 @@ up: ## One-shot: build images, create cluster, load images, apply manifests
 build: ## Build backend + frontend images for the host's architecture
 	docker build -t $(BACKEND_IMAGE)  ./backend
 	docker build -t $(FRONTEND_IMAGE) ./frontend
+push: ## Push images to Docker Hub
+	docker push $(BACKEND_IMAGE)
+	docker push $(FRONTEND_IMAGE)
 
 load: ## Push built images into the kind node
 	kind load docker-image $(BACKEND_IMAGE)  --name $(CLUSTER)

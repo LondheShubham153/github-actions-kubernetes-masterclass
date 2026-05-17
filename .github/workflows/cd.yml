@@ -11,22 +11,51 @@ jobs:
     if: ${{ github.event.workflow_run.conclusion == 'success' && vars.DEPLOY_ENABLED == 'true' }}
     runs-on: ubuntu-latest
     steps:
-      - uses: appleboy/ssh-action@v1
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
         with:
-          host: ${{ secrets.EC2_HOST }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ap-south-1
+
+      - name: Start EC2 and fetch Elastic IP
+        id: start_ec2
+        run: |
+          aws ec2 start-instances --instance-ids ${{ secrets.EC2_INSTANCE_ID }} --region ap-south-1
+          echo "Waiting for instance to be running..."
+          aws ec2 wait instance-running --instance-ids ${{ secrets.EC2_INSTANCE_ID }} --region ap-south-1
+          echo "Waiting for status checks to pass..."
+          aws ec2 wait instance-status-ok --instance-ids ${{ secrets.EC2_INSTANCE_ID }} --region ap-south-1
+
+          ELASTIC_IP=$(aws ec2 describe-addresses \
+            --filters "Name=instance-id,Values=${{ secrets.EC2_INSTANCE_ID }}" \
+            --query "Addresses[0].PublicIp" \
+            --output text --region ap-south-1)
+          echo "EC2_HOST=$ELASTIC_IP" >> $GITHUB_OUTPUT
+          echo "Elastic IP: $ELASTIC_IP"
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ steps.start_ec2.outputs.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
-            if [ ! -d ~/github-actions-kubernetes-masterclass ]; then
-              git clone ${{ github.server_url }}/${{ github.repository }}.git ~/github-actions-kubernetes-masterclass
+            if [ ! -d ~/github-actions-kubernetes-hackathon ]; then
+              git clone https://github.com/${{ github.repository }}.git ~/github-actions-kubernetes-hackathon
             fi
-            cd ~/github-actions-kubernetes-masterclass
+            cd ~/github-actions-kubernetes-hackathon
             git pull origin main
             if [ ! -f .env ]; then
-              echo "ERROR: ~/github-actions-kubernetes-masterclass/.env is missing. Create it once with DOCKERHUB_USERNAME and DB credentials."
+              echo "ERROR: .env is missing. Create it manually once."
               exit 1
             fi
             docker compose pull
             docker compose up -d
             docker image prune -f
 
+      - name: Stop EC2 after deploy
+        if: always()
+        run: |
+          aws ec2 stop-instances --instance-ids ${{ secrets.EC2_INSTANCE_ID }} --region ap-south-1
+          echo "Instance stopped to save cost"
